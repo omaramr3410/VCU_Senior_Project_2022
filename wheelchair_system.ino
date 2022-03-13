@@ -1,0 +1,244 @@
+/* -------------------------------------------------------- */
+/* -------------------JOYSTICK SETTINGS-------------------- */
+/* -------------------------------------------------------- */
+
+/*
+ * Hello! Feel free to adjust these values within the recommended boundaries 
+ * to configure the joystick as needed. Enjoy!
+ */
+
+/*
+ * SENSITIVITY OFFSET
+ * 
+ * Description: 
+ * - Increase this value to widen the joystick deadzone
+ * - Decrease this value to narrow the joystick deadzone
+ * - 6 is the recommended minimum!
+ */
+
+#define SENSITIVITY_OFFSET 6  
+
+/*
+ * MAX_SPEED
+ * 
+ * Description:
+ * - This value limits the maximum speed of the motors. 
+ * - 255 is the maximum possible value!
+ */
+#define MAX_SPEED 255
+
+/*
+ * MIN_SPEED
+ * 
+ * Description:
+ * - This value limits the minimum speed of the motors.
+ * - 40 is highly recommended to be the minimum possible value!
+ */
+#define MIN_SPEED 40
+
+/* -------------------------------------------------------- */
+/* ---------------END OF JOYSTICK SETTINGS----------------- */
+/* -------------------------------------------------------- */
+
+// MOTOR STATUS
+#define BRAKE 0
+#define CW    1
+#define CCW   2
+
+// MOTOR 1
+#define MOTOR_A1_PIN  7
+#define MOTOR_B1_PIN  8
+#define PWM_MOTOR_1   5
+#define EN_PIN_1      A0
+#define MOTOR_1       0
+
+// MOTOR 2
+#define MOTOR_A2_PIN  4
+#define MOTOR_B2_PIN  9
+#define PWM_MOTOR_2   6
+#define EN_PIN_2      A1
+#define MOTOR_2       1
+
+// JOYSTICK
+#define X_AXIS_PIN   A4
+#define Y_AXIS_PIN   A5
+
+// DATA
+int xData = 0;
+int yData = 0;
+int leftSpeed = 0;
+int rightSpeed = 0;
+float slope = 0.0;
+int leftIntercept = 0;
+int rightIntercept = 0;
+float speedMultiplier = 1.0;
+int upperLimit = 127 + SENSITIVITY_OFFSET;
+int lowerLimit = 127 - SENSITIVITY_OFFSET;
+
+void setup() {
+  // Setup Motor 1 (LEFT MOTOR)
+  pinMode(MOTOR_A1_PIN, OUTPUT);
+  pinMode(MOTOR_B1_PIN, OUTPUT);
+  pinMode(PWM_MOTOR_1, OUTPUT);
+  pinMode(EN_PIN_1, OUTPUT);
+
+  // Setup Motor 2 (RIGHT MOTOR)
+  pinMode(MOTOR_A2_PIN, OUTPUT);
+  pinMode(MOTOR_B2_PIN, OUTPUT);
+  pinMode(PWM_MOTOR_2, OUTPUT);
+  pinMode(EN_PIN_2, OUTPUT);
+
+  // Setup Joystick
+  pinMode(X_AXIS_PIN, INPUT);
+  pinMode(Y_AXIS_PIN, INPUT);
+  slope = float(MAX_SPEED - MIN_SPEED) / 88.0;
+  leftIntercept = MIN_SPEED - (16 * slope);
+  rightIntercept = MAX_SPEED + (152 * slope);
+}
+
+void loop() {
+  digitalWrite(EN_PIN_1, HIGH);
+  digitalWrite(EN_PIN_2, HIGH);
+  
+  xData = analogRead(X_AXIS_PIN) / 4;
+  yData = analogRead(Y_AXIS_PIN) / 4;
+
+  speedMultiplier = getSpeedMultiplier(yData);
+
+  leftSpeed = getLeftSpeed(xData) * speedMultiplier;
+  rightSpeed = getRightSpeed(xData) * speedMultiplier;
+
+  // JOYSTICK CENTER
+  if(yData < upperLimit && yData > lowerLimit){
+    motorGo(MOTOR_1, BRAKE, 0);
+    motorGo(MOTOR_2, BRAKE, 0);
+  }
+
+  // JOYSTICK FORWARD
+  else if(yData > 127 + SENSITIVITY_OFFSET){
+    motorGo(MOTOR_1, CCW, leftSpeed);
+    motorGo(MOTOR_2, CW, rightSpeed);
+  }
+
+  // JOYSTICK REVERSE
+  else{
+    motorGo(MOTOR_1, CW, leftSpeed);
+    motorGo(MOTOR_2, CCW, rightSpeed);
+  }
+}
+
+/*
+ * getSpeedMultiplier
+ * 
+ * Description:
+ * - This function uses the y-axis data from the joystick
+ * to output a percentage of the maximum speed the motors will output
+ * - What this means for the user is that the motor speed will increase in
+ * a particular direction the further from the deadzone the joystick is and vice versa
+ */
+float getSpeedMultiplier(int yValue){
+  float multiplier = 1.0;
+  
+  if(yValue > upperLimit){
+    multiplier = float((yValue - upperLimit)) / float((255 - upperLimit));
+  }
+  else if(yValue < lowerLimit){
+    multiplier = float((lowerLimit - yValue)) / float(lowerLimit);
+  }
+
+  return multiplier;
+}
+
+/*
+ * getLeftSpeed
+ * 
+ * Description:
+ * - This function takes in the x-axis data and outputs the pwm speed value
+ * for the left motor.
+ * - What this means for the user is that the further to the left the joystick is,
+ * the slower the left motor will operate (and the faster the right motor will operate) 
+ * to allow the wheelchair to turn left
+ */
+int getLeftSpeed(int xValue){
+  int motorSpeed = 0;
+  
+  if(xValue <= 16){
+    motorSpeed = MIN_SPEED;
+  }
+  else if(xValue <= 104){
+    motorSpeed = (slope * xValue) + leftIntercept;
+  }
+  else{
+    motorSpeed = MAX_SPEED;
+  }
+
+  return motorSpeed;
+}
+
+/*
+ * getRightSpeed
+ * 
+ * Description:
+ * - This function takes in the x-axis data and outputs the pwm speed value
+ * for the right motor.
+ * - What this means for the user is that the further to the right the joystick is,
+ * the slower the right motor will operate (and the faster the left motor will operate) 
+ * to allow the wheelchair to turn right
+ */
+int getRightSpeed(int xValue){
+  int motorSpeed = 0;
+
+  if(xValue <= 152){
+    motorSpeed = MAX_SPEED;
+  }
+  else if(xValue <= 240){
+    motorSpeed = (-slope * xValue) + rightIntercept;
+  }
+  else{
+    motorSpeed = MIN_SPEED;
+  }
+
+  return motorSpeed;
+}
+
+/*
+ * motorGo
+ * 
+ * Description:
+ * - This function takes in the motor value, direction value, and pwm speed value 
+ * and controls the motors accordingly
+ */
+void motorGo(uint8_t motor, uint8_t direct, uint8_t pwm){
+  if(motor == MOTOR_1){
+    if(direct == CW){
+      digitalWrite(MOTOR_A1_PIN, LOW); 
+      digitalWrite(MOTOR_B1_PIN, HIGH);
+    }
+    else if(direct == CCW){
+      digitalWrite(MOTOR_A1_PIN, HIGH);
+      digitalWrite(MOTOR_B1_PIN, LOW);      
+    }
+    else{
+      digitalWrite(MOTOR_A1_PIN, LOW);
+      digitalWrite(MOTOR_B1_PIN, LOW);            
+    }
+    
+    analogWrite(PWM_MOTOR_1, pwm); 
+  }
+  else if(motor == MOTOR_2){
+    if(direct == CW){
+      digitalWrite(MOTOR_A2_PIN, LOW);
+      digitalWrite(MOTOR_B2_PIN, HIGH);
+    }
+    else if(direct == CCW){
+      digitalWrite(MOTOR_A2_PIN, HIGH);
+      digitalWrite(MOTOR_B2_PIN, LOW);      
+    }
+    else{
+      digitalWrite(MOTOR_A2_PIN, LOW);
+      digitalWrite(MOTOR_B2_PIN, LOW);            
+    }
+    
+    analogWrite(PWM_MOTOR_2, pwm);
+  }
+}

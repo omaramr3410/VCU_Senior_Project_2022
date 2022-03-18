@@ -75,6 +75,14 @@ float speedMultiplier = 1.0;
 int upperLimit = 127 + SENSITIVITY_OFFSET;
 int lowerLimit = 127 - SENSITIVITY_OFFSET;
 
+const byte ledPin = 13;//digital pin to output state of wheels
+const byte interruptPin_wireless = 2;//digital pin input from wireless killswitch relay
+const byte interruptPin_wired = 3;//digital pin input from manual killswitch, a push button
+//global to indicate status of wheels, if HIGH then allows wheels to move, if LOW then keeps brake on
+volatile byte state = LOW;//defaults to LOW, thus when powered on, initially can not drive
+volatile int a = 0, b = 0;//a <= pin 2, b <= pin 3
+
+//called once at startup
 void setup() {
   // Setup Motor 1 (LEFT MOTOR)
   pinMode(MOTOR_A1_PIN, OUTPUT);
@@ -94,9 +102,31 @@ void setup() {
   slope = float(MAX_SPEED - MIN_SPEED) / 88.0;
   leftIntercept = MIN_SPEED - (16 * slope);
   rightIntercept = MAX_SPEED + (152 * slope);
+  
+  //output state variable
+  pinMode(ledPin, OUTPUT);
+  
+  //setup dig pin 2 as input
+  pinMode(interruptPin_wireless, INPUT_PULLUP);
+  attachInterrupt(digitalPinToInterrupt(interruptPin_wireless), killswitch, CHANGE);//sensitive to any change to input
+  
+  //setup dig pin 3 as input
+  pinMode(interruptPin_wired, INPUT_PULLUP);
+  attachInterrupt(digitalPinToInterrupt(interruptPin_wired), killswitch, RISING);//sensitive to only rising edge, from 0 to 1
 }
 
+//called repeatedly 
 void loop() {
+  //set output ledPin to state of wheels
+  digitalWrite(ledPin, state);
+  //check if wheels are off
+  if(state == LOW){
+	motorGo(MOTOR_1, BRAKE, 0);
+    motorGo(MOTOR_2, BRAKE, 0);
+	//restart loop call
+	return;
+  }
+
   digitalWrite(EN_PIN_1, HIGH);
   digitalWrite(EN_PIN_2, HIGH);
   
@@ -125,6 +155,25 @@ void loop() {
     motorGo(MOTOR_1, CW, leftSpeed);
     motorGo(MOTOR_2, CCW, rightSpeed);
   }
+}
+
+/*
+ * killswitch
+ * 
+ * Description:
+ * - interrupt called on change of Digital Pin 2 or rising edge of Digital Pin 3
+ */
+void killswitch() {
+  state = !state;
+  a = digitalRead(2);
+  Serial.print("dig pin 2: ");
+  Serial.print(a);
+  Serial.print("\n\n\n\n\n\n\n\n\n ");
+
+  b = digitalRead(3);
+  Serial.print("dig pin 3 (manual killswitch): ");
+  Serial.print(b);
+  Serial.print("\n\n\n\n\n\n\n\n\n ");
 }
 
 /*
